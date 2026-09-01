@@ -959,7 +959,8 @@ hook.Add("PostDrawTranslucentRenderables", "PonyHolding.DrawMagicAuras", functio
                 color.r,
                 color.g,
                 color.b,
-                alpha)
+                alpha,
+                state.model)
 
             if particlesPerSecond > 0 and isfunction(DrawParticles) then
                 state.auraPhase = DrawParticles(
