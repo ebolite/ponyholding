@@ -120,12 +120,43 @@ local function releaseHiddenWeapon(weapon)
     weapon:SetNoDraw(record.original)
 end
 
+--[[
+Defuse PPM/2's un-hide before it fires, rather than mopping up after it.
+
+Its ModelChecks timer (client/hooks.moon:36) un-hides, once a second, every
+weapon carrying __ppm2_weapon_hit, whenever the pony's Hide Weapons option is
+off. No hook is consulted on that branch -- it is unconditional.
+
+And the flag is never cleared, because PPM/2 sets it on the weapon and clears
+it on the player:
+
+    wep.__ppm2_weapon_hit = true      -- set here
+    ply.__ppm2_weapon_hit = false     -- cleared here
+
+So a weapon PPM/2 hid even once is un-hidden every second for the rest of the
+map. We re-forced NoDraw each Think, but the timer fires after that within a
+frame, so one frame rendered the real weapon at its bonemerged position --
+the chest -- before the next Think put it back. Exactly 1.00s apart, which is
+what the diagnostics showed.
+
+Clearing the flag is the surgical fix: the branch only touches weapons that
+carry it. It cannot lose PPM/2 any state it actually keeps, since the flag it
+believes it clears is the one on the player, which is not the one it reads.
+]]
+local function releaseFromPPM2(weapon)
+    weapon.__ppm2_weapon_hit = nil
+end
+
 local function hideRealWeapon(weapon)
     if not IsValid(weapon) then return end
 
+    releaseFromPPM2(weapon)
+
     local existing = hiddenWeapons[weapon]
     if existing then
-        -- PPM/2 may undo NoDraw when its Hide Weapons option changes.
+        -- Still re-forced: the flag is cleared every Think, but PPM/2 sets it
+        -- again whenever Hide Weapons is on, so a toggle can still land one
+        -- un-hide between two of our passes.
         if not weapon:GetNoDraw() then
             existing.forced = true
             weapon:SetNoDraw(true)
@@ -860,6 +891,32 @@ hook.Add("Think", "PonyHolding.Update", function()
     for ply in pairs(states) do
         if not present[ply] or not IsValid(ply) then
             destroyState(ply)
+        end
+    end
+end)
+
+--[[
+One last re-force immediately before anything is drawn.
+
+hideRealWeapon runs from Think, early in the frame. PPM/2's timer clearing
+NoDraw after that is the cause we know about, and clearing its flag stops it,
+but the shape of the bug -- one rendered frame between somepony clearing
+NoDraw and our next Think -- is available to anything that touches a weapon we
+have hidden. This closes the window itself instead of one route into it.
+
+PreDrawOpaqueRenderables rather than PrePlayerDraw: a weapon is its own
+entity, bonemerged rather than drawn by the player, so player draw order
+guarantees nothing about when it renders.
+
+Cheap: one entry per armed pony in view, and SetNoDraw on an already-hidden
+entity does nothing.
+]]
+hook.Add("PreDrawOpaqueRenderables", "PonyHolding.HoldNoDraw", function()
+    for weapon, record in pairs(hiddenWeapons) do
+        if not IsValid(weapon) then
+            hiddenWeapons[weapon] = nil
+        elseif record.forced and not weapon:GetNoDraw() then
+            weapon:SetNoDraw(true)
         end
     end
 end)
