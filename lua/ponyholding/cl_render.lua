@@ -490,6 +490,30 @@ local function configureReference(state, targetPos, targetAng, scale, mouthGrip)
     return true
 end
 
+-- A muzzle attachment only reliably encodes the barrel direction. Its roll
+-- about that barrel is whatever bone the modeller hung it off, so it is
+-- routinely a quarter turn away from the weapon's own up. Spin the frame
+-- about the aim axis -- which leaves the aim itself untouched -- until the
+-- model's up is as close to world up as it can get.
+local function levelRollAboutAxis(ang, axis)
+    local up = ang:Up()
+    local upPerp = up - axis * up:Dot(axis)
+    local worldPerp = WORLD_UP - axis * WORLD_UP:Dot(axis)
+
+    -- Aiming straight up or down leaves the roll genuinely undefined.
+    if upPerp:LengthSqr() < 1e-6 or worldPerp:LengthSqr() < 1e-6 then return ang end
+
+    upPerp = upPerp:GetNormalized()
+    worldPerp = worldPerp:GetNormalized()
+
+    local cosine = math.Clamp(upPerp:Dot(worldPerp), -1, 1)
+    local sine = axis:Dot(upPerp:Cross(worldPerp))
+
+    local leveled = Angle(ang)
+    leveled:RotateAroundAxis(axis, math.deg(math.atan2(sine, cosine)))
+    return leveled
+end
+
 -- Magic uses the reference rig only to recover the weapon's authored
 -- orientation. The visible clone is then detached and centered on one common
 -- skull-relative target, so hold-type hand positions cannot move different
@@ -573,8 +597,14 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
     if orientation.kind == "muzzle" then
         -- The attachment's +X/Forward axis is the barrel direction. Mapping it
         -- onto this level world frame makes differently authored models agree.
-        desiredFrame = matrixAt(vector_origin, Angle(0, referenceAng.y, 0))
+        -- Only the direction is trustworthy, so the roll is re-derived rather
+        -- than inherited from the attachment.
+        local aimAng = Angle(0, referenceAng.y, 0)
+        desiredFrame = matrixAt(vector_origin, aimAng)
             * orientation.inverseLocalMuzzle
+        desiredFrame = matrixAt(
+            vector_origin,
+            levelRollAboutAxis(desiredFrame:GetAngles(), aimAng:Forward()))
     else
         local pitch = orientation.kind == "reference" and MAGIC_PITCH:GetFloat() or 0
         desiredFrame = matrixAt(vector_origin, Angle(pitch, referenceAng.y, 0))
