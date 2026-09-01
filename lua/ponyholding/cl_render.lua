@@ -28,18 +28,44 @@ local TELEPORT_DISTANCE_SQR = 200 * 200
 local AURA_MARGIN = 1.2
 
 -- Placement calibration. These were console variables while the transforms
--- were being dialled in against the PAC outfit; the values are settled, so
--- they are named here instead of sitting on the addon's console surface.
+-- were being dialled in against the PAC outfit; the magic values are settled,
+-- so they are named here instead of sitting on the addon's console surface.
 -- Both pitch corrections landed on zero and are kept named to document where
 -- a correction would go.
 local MAGIC_FORWARD = 10
 local MAGIC_RIGHT = 20
 local MAGIC_UP = -10
 local MAGIC_PITCH = 0
-local MOUTH_X = 4
-local MOUTH_Y = 4.5
-local MOUTH_Z = -1.68
 local MOUTH_PITCH = 0
+
+--[[
+The mouth fallback is back on convars, because it is not settled.
+
+It only applies to weapons with no profile in sh_core.lua, so unlike the
+magic offsets it is aimed at models nopony has measured -- there is no
+single right answer to freeze, and dialling it in wants the game running
+rather than a publish cycle per unit.
+
+Axes are LrigScull's own, which is why the help text now says so: Y is
+vertical and POSITIVE IS DOWN, X is roughly forward along the muzzle (the
+long weapons in sh_core.lua carry the big X -- shotgun 20.8, AR2 16.7),
+and Z is the lateral bias. Recorded here because the previous round of
+tuning left the mapping in nopony's head but the tuner's.
+
+Units are source units at pony size 1.0; every offset is multiplied by
+ponySize() at use, so these stay true for a bigger or smaller pony.
+]]
+local MOUTH_X = CreateClientConVar(
+    "ponyholding_mouth_x", "4", true, false,
+    "Fallback mouth-hold offset along LrigScull's local X axis (forward)", -100, 100)
+
+local MOUTH_Y = CreateClientConVar(
+    "ponyholding_mouth_y", "4.8", true, false,
+    "Fallback mouth-hold offset along LrigScull's local Y axis (vertical, + is down)", -100, 100)
+
+local MOUTH_Z = CreateClientConVar(
+    "ponyholding_mouth_z", "-1.68", true, false,
+    "Fallback mouth-hold offset along LrigScull's local Z axis (lateral)", -100, 100)
 
 local states = {}
 
@@ -678,9 +704,9 @@ local function targetTransform(ply, state)
     local size = ponySize(ply)
     local pos, ang, displayScale = exactTransform(ply, state, skullPos, skullAng, size)
     local mouthOffset = Vector(
-        MOUTH_X,
-        MOUTH_Y,
-        MOUTH_Z)
+        MOUTH_X:GetFloat(),
+        MOUTH_Y:GetFloat(),
+        MOUTH_Z:GetFloat())
 
     if not pos then
         pos = LocalToWorld(mouthOffset * size, angle_zero, skullPos, skullAng)

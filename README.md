@@ -21,6 +21,19 @@ held-item renderer.
 
 `ponyholding_reload` destroys and lazily recreates all clientside render models.
 
+### Mouth-hold fallback
+
+Placement for weapons with no profile in `sh_core.lua`. Offsets are in
+`LrigScull`'s local axes, in source units at pony size 1.0, and are scaled by
+the pony's size at use.
+
+- `ponyholding_mouth_x 4` — forward, along the muzzle
+- `ponyholding_mouth_y 4.8` — vertical, **positive is down**
+- `ponyholding_mouth_z -1.68` — lateral
+
+A weapon with its own profile ignores all three; give it a
+`RegisterMouthProfile` entry instead of bending the fallback around it.
+
 ## Profile API
 
 Profiles are keyed by weapon class and take precedence over model profiles:
