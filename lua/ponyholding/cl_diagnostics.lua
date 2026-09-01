@@ -38,6 +38,14 @@ local function snapshot(ply)
     return {
         bail = Holding.LastBail and Holding.LastBail[ply] or nil,
         held = valid and weapon:GetClass() or "-",
+        -- Entity index, so a weapon that keeps reading invalid can be told
+        -- apart from one being destroyed and recreated. Same index either
+        -- side of a gap is a networking hiccup on one entity; a changing
+        -- index means something is handing the pony a new weapon.
+        index = valid and weapon:EntIndex() or -1,
+        -- The usual reason a remote entity reads invalid while its owner
+        -- is plainly standing there.
+        dormant = ply:IsDormant(),
         -- The two that matter together: NoDraw false while we still believe
         -- the weapon is hidden is precisely the visible frame.
         noDraw = valid and weapon:GetNoDraw() or false,
@@ -52,6 +60,8 @@ local function differs(a, b)
 
     return a.bail ~= b.bail
         or a.held ~= b.held
+        or a.index ~= b.index
+        or a.dormant ~= b.dormant
         or a.noDraw ~= b.noDraw
         or a.tracked ~= b.tracked
         or a.alive ~= b.alive
@@ -65,11 +75,13 @@ local function describe(shot)
     -- off, so the engine is drawing the real weapon on the pony this frame.
     local visible = shot.tracked and not shot.noDraw
 
-    return string.format("%-18s weapon %-20s noDraw %-5s tracked %-5s%s",
+    return string.format("%-18s %-20s #%-4d noDraw %-5s tracked %-5s%s%s",
         reason,
         shot.held,
+        shot.index,
         tostring(shot.noDraw),
         tostring(shot.tracked),
+        shot.dormant and " DORMANT" or "",
         visible and "  <-- REAL WEAPON VISIBLE" or "")
 end
 
