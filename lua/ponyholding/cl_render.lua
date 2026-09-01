@@ -305,23 +305,59 @@ local function refreshState(ply, weapon, modelName)
     return state
 end
 
-local function ensureState(ply)
-    if not ENABLED:GetBool() or not ply:Alive() or not isPony(ply) then
-        destroyState(ply)
-        return nil
+-- Why ensureState last gave up on a player, for cl_diagnostics to read.
+-- Cleared the moment it succeeds again, so a reason sitting here is a reason
+-- that is live this frame.
+Holding.LastBail = Holding.LastBail or {}
+
+--[[
+A bail is not free, so a brief one is not obeyed.
+
+destroyState calls releaseHiddenWeapon, which puts the real weapon back on
+the pony at its bonemerged position -- the chest, on a PPM/2 skeleton. On the
+next frame the inputs recover, refreshState runs, hideRealWeapon hides it
+again. Net effect: one frame of chest weapon per hiccup, and nothing on the
+holder's own screen, because every input below is locally authoritative for
+yourself and networked for everypony else. ply:GetActiveWeapon() is the
+obvious one -- for a remote player that is a separate networked entity that
+can read invalid while the pony itself is drawing perfectly.
+
+So a bail suspends rather than tears down, and only destroys once the reason
+has held for GRACE. Nothing extra is needed to stop drawing during that
+window: updateAndDraw already declines when state.weapon is invalid, and a
+brief stale world model beats a frame of the real one appearing.
+
+Long enough to cover a network hiccup, short enough that a real holster
+still clears the model faster than anypony can see.
+]]
+local BAIL_GRACE = 0.25
+
+local function bail(ply, reason)
+    Holding.LastBail[ply] = reason
+
+    local state = states[ply]
+    if state then
+        state.bailedAt = state.bailedAt or CurTime()
+
+        if CurTime() - state.bailedAt < BAIL_GRACE then return nil end
     end
+
+    destroyState(ply)
+    return nil
+end
+
+local function ensureState(ply)
+    if not ENABLED:GetBool() then return bail(ply, "disabled") end
+    if not ply:Alive() then return bail(ply, "not alive") end
+    if not isPony(ply) then return bail(ply, "not a pony") end
 
     local weapon = ply:GetActiveWeapon()
-    if not IsValid(weapon) then
-        destroyState(ply)
-        return nil
-    end
+    if not IsValid(weapon) then return bail(ply, "no active weapon") end
 
     local modelName = worldModelFor(weapon)
-    if not modelName then
-        destroyState(ply)
-        return nil
-    end
+    if not modelName then return bail(ply, "no world model") end
+
+    Holding.LastBail[ply] = nil
 
     local state = states[ply]
     if not state
@@ -333,8 +369,14 @@ local function ensureState(ply)
         hideRealWeapon(weapon)
     end
 
-    if state then state.mode = hasHorn(ply) and "magic" or "mouth" end
-    if state then state.auraVisible = false end
+    if state then
+        -- Recovered, so the next bail starts its own grace window rather
+        -- than measuring against one from minutes ago.
+        state.bailedAt = nil
+        state.mode = hasHorn(ply) and "magic" or "mouth"
+        state.auraVisible = false
+    end
+
     return state
 end
 
