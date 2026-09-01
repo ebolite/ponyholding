@@ -21,43 +21,25 @@ local MAGIC_AURA = CreateClientConVar(
     "ponyholding_magic_aura", "1", true, false,
     "Draw a silent MLP Magic Auras effect around magically held weapons")
 
-local MAGIC_FORWARD = CreateClientConVar(
-    "ponyholding_magic_forward", "10", true, false,
-    "Magic-held item offset along the pony's forward axis", -100, 100)
-
-local MAGIC_RIGHT = CreateClientConVar(
-    "ponyholding_magic_right", "20", true, false,
-    "Magic-held item offset along the pony's right axis", -100, 100)
-
-local MAGIC_UP = CreateClientConVar(
-    "ponyholding_magic_up", "-10", true, false,
-    "Magic-held item vertical offset", -100, 100)
-
-local MAGIC_PITCH = CreateClientConVar(
-    "ponyholding_magic_pitch", "0", true, false,
-    "No-muzzle fallback pitch correction in magic mode", -180, 180)
-
-local MOUTH_X = CreateClientConVar(
-    "ponyholding_mouth_x", "4", true, false,
-    "Fallback mouth-hold offset on LrigScull's local X axis", -100, 100)
-
-local MOUTH_Y = CreateClientConVar(
-    "ponyholding_mouth_y", "4.5", true, false,
-    "Fallback mouth-hold offset on LrigScull's local Y axis", -100, 100)
-
-local MOUTH_Z = CreateClientConVar(
-    "ponyholding_mouth_z", "-1.68", true, false,
-    "Fallback mouth-hold offset on LrigScull's local Z axis", -100, 100)
-
-local MOUTH_PITCH = CreateClientConVar(
-    "ponyholding_mouth_pitch", "0", true, false,
-    "Fallback mouth-hold pitch correction", -180, 180)
-
 local REFERENCE_MODEL = "models/player/kleiner.mdl"
 local WORLD_UP = Vector(0, 0, 1)
 local MAGIC_RESPONSE = 9
 local TELEPORT_DISTANCE_SQR = 200 * 200
 local AURA_MARGIN = 1.2
+
+-- Placement calibration. These were console variables while the transforms
+-- were being dialled in against the PAC outfit; the values are settled, so
+-- they are named here instead of sitting on the addon's console surface.
+-- Both pitch corrections landed on zero and are kept named to document where
+-- a correction would go.
+local MAGIC_FORWARD = 10
+local MAGIC_RIGHT = 20
+local MAGIC_UP = -10
+local MAGIC_PITCH = 0
+local MOUTH_X = 4
+local MOUTH_Y = 4.5
+local MOUTH_Z = -1.68
+local MOUTH_PITCH = 0
 
 local states = {}
 
@@ -466,7 +448,7 @@ local function configureReference(state, targetPos, targetAng, scale, mouthGrip)
 
     local _, desiredAng = LocalToWorld(
         vector_origin,
-        mouthGrip and Angle(MOUTH_PITCH:GetFloat(), 0, 0) or angle_zero,
+        mouthGrip and Angle(MOUTH_PITCH, 0, 0) or angle_zero,
         vector_origin,
         targetAng)
 
@@ -606,7 +588,7 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
             vector_origin,
             levelRollAboutAxis(desiredFrame:GetAngles(), aimAng:Forward()))
     else
-        local pitch = orientation.kind == "reference" and MAGIC_PITCH:GetFloat() or 0
+        local pitch = orientation.kind == "reference" and MAGIC_PITCH or 0
         desiredFrame = matrixAt(vector_origin, Angle(pitch, referenceAng.y, 0))
             * matrixAt(vector_origin, orientation.localAng)
     end
@@ -654,9 +636,9 @@ local function targetTransform(ply, state)
     local size = ponySize(ply)
     local pos, ang, displayScale = exactTransform(ply, state, skullPos, skullAng, size)
     local mouthOffset = Vector(
-        MOUTH_X:GetFloat(),
-        MOUTH_Y:GetFloat(),
-        MOUTH_Z:GetFloat())
+        MOUTH_X,
+        MOUTH_Y,
+        MOUTH_Z)
 
     if not pos then
         pos = LocalToWorld(mouthOffset * size, angle_zero, skullPos, skullAng)
@@ -670,9 +652,9 @@ local function targetTransform(ply, state)
         displayScale = size
         local levelAng = Angle(0, ply:EyeAngles().y, 0)
         pos = skullPos
-            + levelAng:Forward() * MAGIC_FORWARD:GetFloat() * size
-            + levelAng:Right() * MAGIC_RIGHT:GetFloat() * size
-            + WORLD_UP * MAGIC_UP:GetFloat() * size
+            + levelAng:Forward() * MAGIC_FORWARD * size
+            + levelAng:Right() * MAGIC_RIGHT * size
+            + WORLD_UP * MAGIC_UP * size
 
         if MAGIC_BOB:GetBool() then
             pos = pos + WORLD_UP * math.sin(CurTime() * 2.2 + ply:EntIndex()) * 1.5 * size
@@ -707,10 +689,24 @@ local function shouldDraw(ply)
 end
 
 local function updateAndDraw(ply, state)
+    -- PostPlayerDraw runs once per render pass, not once per frame: water
+    -- reflections, RT monitors and the 3D skybox each re-draw the player. The
+    -- transform below advances the magic damping by a FrameTime() step, so a
+    -- second pass would step the smoothing again and leave its copy of the
+    -- weapon trailing the first. Later passes redraw what the first one
+    -- already positioned, which still puts the weapon in the reflection.
+    local frame = FrameNumber()
+    if state.lastFrame == frame then
+        if IsValid(state.model) then state.model:DrawModel() end
+        return
+    end
+
     if not IsValid(state.weapon) or not shouldDraw(ply) or not IsValid(state.model) then
         state.auraVisible = false
         return
     end
+
+    state.lastFrame = frame
 
     local pos, ang, scale, skullAng = targetTransform(ply, state)
     if not pos then

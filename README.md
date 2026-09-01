@@ -18,14 +18,6 @@ held-item renderer.
 - `ponyholding_draw_distance 3000` (`0` disables distance culling)
 - `ponyholding_magic_bob 1`
 - `ponyholding_magic_aura 1`
-- `ponyholding_magic_forward 10`
-- `ponyholding_magic_right 20`
-- `ponyholding_magic_up -10`
-- `ponyholding_magic_pitch 0` (no-muzzle fallback only)
-- `ponyholding_mouth_x 4`
-- `ponyholding_mouth_y 4.5`
-- `ponyholding_mouth_z -1.68`
-- `ponyholding_mouth_pitch 0`
 
 `ponyholding_reload` destroys and lazily recreates all clientside render models.
 
