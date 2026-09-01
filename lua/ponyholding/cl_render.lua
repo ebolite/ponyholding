@@ -688,11 +688,33 @@ local function targetTransform(ply, state)
     end
 
     if state.mode == "magic" then
-        -- Offset one normalized weapon center from the skull. Mouth profiles
-        -- and hold-type hand positions do not contribute to this position.
-        ang = ply:GetAngles()
-        displayScale = size
+        --[[
+        Offset one normalized weapon center from the skull. Mouth profiles
+        and hold-type hand positions do not contribute to this position.
+
+        Both the position and the orientation take their yaw from EyeAngles.
+        They used to disagree -- the orientation came from GetAngles while
+        only the offset used EyeAngles -- and that is a real difference, not
+        two spellings of one thing. EyeAngles is networked for every player
+        precisely so other clients can read an aim direction. A player's
+        entity angles are not: the rendered facing of somepony else is
+        reconstructed by the animation system from pose parameters, so
+        GetAngles is only dependable for the local player.
+
+        Which produced exactly the reported shape. The weapon orbited the
+        holder's head correctly, because that half read EyeAngles, while
+        pointing one fixed world direction, because the half that aimed it
+        did not. Right on the holder's own screen, where the two agree.
+
+        Levelled here rather than inside the consumers, because the yaw is
+        all either one wants: configureMagicReference reads referenceAng.y,
+        and the non-reference fallback would otherwise hand the model a
+        pitch and roll that nothing intends it to have.
+        ]]
         local levelAng = Angle(0, ply:EyeAngles().y, 0)
+
+        ang = Angle(levelAng)
+        displayScale = size
         pos = skullPos
             + levelAng:Forward() * MAGIC_FORWARD * size
             + levelAng:Right() * MAGIC_RIGHT * size
