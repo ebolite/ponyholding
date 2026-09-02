@@ -3,7 +3,7 @@
 PonyHolding allows ponies to visually carry held weapons.
 
 - Ponies with horns carry weapons with a magical aura from MLP Magic Auras. Weapon movement is damped with bobbing.
-- Ponies without horns carry weapons sideways in their mouthes.
+- Ponies without horns carry weapons sideways in their mouths.
 - Has authored support for HL2 weapons, with limited custom SWEP support.
 - Supports authored `RegisterMouthProfile` entries for authored placements.
 
