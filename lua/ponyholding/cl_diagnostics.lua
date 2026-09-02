@@ -1,24 +1,3 @@
---[[
-PonyHolding diagnostics -- client side.
-
-The weapon flicking to the chest is the *real* weapon becoming visible for a
-frame, not the display model going astray: the display model is created with
-SetNoDraw(true) and only ever appears through an explicit DrawModel, so it
-cannot render itself anywhere. Something is clearing NoDraw on the weapon.
-
-Only two things can. PPM/2's ModelChecks timer (client/hooks.moon:36) at 1 Hz,
-which only touches weapons it flagged itself and only when something says the
-weapon should draw -- nothing here implements those hooks. And our own
-destroyState, via releaseHiddenWeapon, on any frame ensureState gives up.
-
-So this watches both ends at once: what ensureState decided, and what actually
-happened to NoDraw. Prints on transitions only, with the gap since the last
-one -- a steady ~1.0s says PPM/2, anything faster says the bail.
-
-    ponyholding_watch [partial name]   start (no name: everypony but you)
-    ponyholding_watch_stop             stop, and print the tally
-]]
-
 local Holding = PonyHolding
 
 local watching = nil

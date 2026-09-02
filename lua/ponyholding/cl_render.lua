@@ -1,8 +1,3 @@
--- PonyHolding client renderer.
---
--- PPM/2 continues to hide its real weapon entity. This file draws a quiet
--- clientside copy at the pony's mouth, or floating beside a horned pony.
-
 local Holding = PonyHolding
 
 local ENABLED = CreateClientConVar(
@@ -27,34 +22,19 @@ local MAGIC_RESPONSE = 9
 local TELEPORT_DISTANCE_SQR = 200 * 200
 local AURA_MARGIN = 1.2
 
--- Placement calibration. These were console variables while the transforms
--- were being dialled in against the PAC outfit; the magic values are settled,
--- so they are named here instead of sitting on the addon's console surface.
--- Both pitch corrections landed on zero and are kept named to document where
--- a correction would go.
+-- Settled placement values, so we name them here rather than leave them on the
+-- console. Both pitch corrections landed on zero and are kept to mark the spot
 local MAGIC_FORWARD = 10
 local MAGIC_RIGHT = 20
 local MAGIC_UP = -10
 local MAGIC_PITCH = 0
 local MOUTH_PITCH = 0
 
---[[
-The mouth fallback is back on convars, because it is not settled.
-
-It only applies to weapons with no profile in sh_core.lua, so unlike the
-magic offsets it is aimed at models nopony has measured -- there is no
-single right answer to freeze, and dialling it in wants the game running
-rather than a publish cycle per unit.
-
-Axes are LrigScull's own, which is why the help text now says so: Y is
-vertical and POSITIVE IS DOWN, X is roughly forward along the muzzle (the
-long weapons in sh_core.lua carry the big X -- shotgun 20.8, AR2 16.7),
-and Z is the lateral bias. Recorded here because the previous round of
-tuning left the mapping in nopony's head but the tuner's.
-
-Units are source units at pony size 1.0; every offset is multiplied by
-ponySize() at use, so these stay true for a bigger or smaller pony.
-]]
+-- Convars, not constants: these only apply to weapons with no profile, so there
+-- is no measured answer to freeze and dialling them in wants the game running.
+-- Axes are LrigScull's own: Y is vertical and positive is DOWN, X is forward
+-- along the muzzle, Z is lateral. Source units at pony size 1.0, multiplied
+-- by ponySize() at use
 local MOUTH_X = CreateClientConVar(
     "ponyholding_mouth_x", "4", true, false,
     "Fallback mouth-hold offset along LrigScull's local X axis (forward)", -100, 100)
@@ -81,9 +61,8 @@ end
 local hiddenWeapons = {}
 Holding.HiddenWeapons = hiddenWeapons
 
--- The biped pose supplies the grip location. This conversion turns the human
--- hand into a sideways mouth grip. It is intentionally small and hold-type
--- based; exact weapon profiles always win.
+-- Turns the human hand pose into a sideways mouth grip. Kept small and
+-- hold-type based, since an exact weapon profile always wins
 local HOLD_ACTIVITIES = {
     normal = ACT_HL2MP_IDLE,
     passive = ACT_HL2MP_IDLE_PASSIVE,
@@ -120,29 +99,9 @@ local function releaseHiddenWeapon(weapon)
     weapon:SetNoDraw(record.original)
 end
 
---[[
-Defuse PPM/2's un-hide before it fires, rather than mopping up after it.
-
-Its ModelChecks timer (client/hooks.moon:36) un-hides, once a second, every
-weapon carrying __ppm2_weapon_hit, whenever the pony's Hide Weapons option is
-off. No hook is consulted on that branch -- it is unconditional.
-
-And the flag is never cleared, because PPM/2 sets it on the weapon and clears
-it on the player:
-
-    wep.__ppm2_weapon_hit = true      -- set here
-    ply.__ppm2_weapon_hit = false     -- cleared here
-
-So a weapon PPM/2 hid even once is un-hidden every second for the rest of the
-map. We re-forced NoDraw each Think, but the timer fires after that within a
-frame, so one frame rendered the real weapon at its bonemerged position --
-the chest -- before the next Think put it back. Exactly 1.00s apart, which is
-what the diagnostics showed.
-
-Clearing the flag is the surgical fix: the branch only touches weapons that
-carry it. It cannot lose PPM/2 any state it actually keeps, since the flag it
-believes it clears is the one on the player, which is not the one it reads.
-]]
+-- PPM2's ModelChecks timer un-hides every weapon carrying __ppm2_weapon_hit
+-- once a second, unconditionally. It sets that flag on the weapon and clears it
+-- on the player, so it never gets cleared -- we clear it ourselves
 local function releaseFromPPM2(weapon)
     weapon.__ppm2_weapon_hit = nil
 end
@@ -154,9 +113,8 @@ local function hideRealWeapon(weapon)
 
     local existing = hiddenWeapons[weapon]
     if existing then
-        -- Still re-forced: the flag is cleared every Think, but PPM/2 sets it
-        -- again whenever Hide Weapons is on, so a toggle can still land one
-        -- un-hide between two of our passes.
+        -- Still re-forced, since a Hide Weapons toggle can land an un-hide
+        -- between two of our passes
         if not weapon:GetNoDraw() then
             existing.forced = true
             weapon:SetNoDraw(true)
@@ -258,8 +216,7 @@ local function storedWeaponFor(weapon)
     return weapons.GetStored(weapon:GetClass())
 end
 
--- The first argument that is a non-empty model path. A weapon answers this
--- question in several places and any of them can be absent, nil, or blank.
+-- A weapon answers this in several places and any of them can be nil or blank
 local function firstModelName(...)
     for index = 1, select("#", ...) do
         local candidate = select(index, ...)
@@ -272,15 +229,12 @@ local function worldModelFor(weapon)
 
     local stored = storedWeaponFor(weapon)
 
-    -- A SWEP which explicitly disables its world model is saying its WorldModel
-    -- field is a placeholder rather than the thing players should see. Draw
-    -- nothing instead of exposing that placeholder.
+    -- A SWEP that disables its world model is telling us WorldModel is a
+    -- placeholder, so we draw nothing rather than expose it
     local showWorldModel = weapon.ShowWorldModel
     if showWorldModel == nil and stored then showWorldModel = stored.ShowWorldModel end
     if showWorldModel == false then return nil end
 
-    -- In preference order: the SWEP's own answer, the entity's own model, the
-    -- class's declared world model, then the stored class table's.
     local modelName = firstModelName(
         isfunction(weapon.GetWeaponWorldModel) and weapon:GetWeaponWorldModel() or nil,
         weapon:GetModel(),
@@ -314,9 +268,8 @@ local function createDisplayModel(modelName, weapon)
     model:DrawShadow(false)
     copyAppearance(weapon, model)
 
-    -- Cache the root bone's inverse bind transform before this model is
-    -- parented and bonemerged. Later, currentRoot * inverseBind reconstructs
-    -- the model-to-world matrix for its render bounds.
+    -- Cached before bonemerging, so currentRoot * inverseBind later rebuilds the
+    -- model-to-world matrix for the render bounds
     model:SetPos(vector_origin)
     model:SetAngles(angle_zero)
     model:SetModelScale(1, 0)
@@ -370,31 +323,13 @@ local function refreshState(ply, weapon, modelName)
     return state
 end
 
--- Why ensureState last gave up on a player, for cl_diagnostics to read.
--- Cleared the moment it succeeds again, so a reason sitting here is a reason
--- that is live this frame.
+-- Why ensureState last gave up, for cl_diagnostics. Cleared on success, so a
+-- reason sitting here is live this frame
 Holding.LastBail = Holding.LastBail or {}
 
---[[
-A bail is not free, so a brief one is not obeyed.
-
-destroyState calls releaseHiddenWeapon, which puts the real weapon back on
-the pony at its bonemerged position -- the chest, on a PPM/2 skeleton. On the
-next frame the inputs recover, refreshState runs, hideRealWeapon hides it
-again. Net effect: one frame of chest weapon per hiccup, and nothing on the
-holder's own screen, because every input below is locally authoritative for
-yourself and networked for everypony else. ply:GetActiveWeapon() is the
-obvious one -- for a remote player that is a separate networked entity that
-can read invalid while the pony itself is drawing perfectly.
-
-So a bail suspends rather than tears down, and only destroys once the reason
-has held for GRACE. Nothing extra is needed to stop drawing during that
-window: updateAndDraw already declines when state.weapon is invalid, and a
-brief stale world model beats a frame of the real one appearing.
-
-Long enough to cover a network hiccup, short enough that a real holster
-still clears the model faster than anypony can see.
-]]
+-- We suspend rather than tear down. destroyState puts the real weapon back at
+-- its bonemerged chest position for a frame, and most bail reasons are networked
+-- state that reads invalid for a tick on a remote pony who is drawing fine
 local BAIL_GRACE = 0.25
 
 local function bail(ply, reason)
@@ -435,8 +370,7 @@ local function ensureState(ply)
     end
 
     if state then
-        -- Recovered, so the next bail starts its own grace window rather
-        -- than measuring against one from minutes ago.
+        -- Recovered, so the next bail starts its own grace window
         state.bailedAt = nil
         state.mode = hasHorn(ply) and "magic" or "mouth"
         state.auraVisible = false
@@ -520,8 +454,7 @@ local function muzzleAttachment(model, weapon)
 
     if bestID then return bestID end
 
-    -- Some SWEP bases expose the correct numbered world-model attachment even
-    -- when its name is unconventional.
+    -- Some SWEP bases number the attachment correctly but name it oddly
     if isfunction(weapon.GetMuzzleAttachment) then
         local ok, attachmentID = pcall(weapon.GetMuzzleAttachment, weapon)
         if ok and isnumber(attachmentID) and attachmentID > 0
@@ -531,9 +464,8 @@ local function muzzleAttachment(model, weapon)
     end
 end
 
--- Bonemerging the display model onto the reference rig is how it inherits the
--- rig's pose. The three effects are one decision, so they are set and cleared
--- as one rather than a line at a time at four call sites.
+-- Bonemerging is how the display model inherits the rig's pose. The three
+-- effects are one decision, so we set and clear them together
 local function bonemergeTo(model, parent)
     if model:GetParent() == parent then return end
 
@@ -590,11 +522,9 @@ local function configureReference(state, targetPos, targetAng, scale, mouthGrip)
     return true
 end
 
--- A muzzle attachment only reliably encodes the barrel direction. Its roll
--- about that barrel is whatever bone the modeller hung it off, so it is
--- routinely a quarter turn away from the weapon's own up. Spin the frame
--- about the aim axis -- which leaves the aim itself untouched -- until the
--- model's up is as close to world up as it can get.
+-- A muzzle attachment only encodes the barrel direction reliably. Its roll is
+-- whatever bone the modeller hung it off, routinely a quarter turn out, so we
+-- spin the frame about the aim axis until the model's up is nearest world up
 local function levelRollAboutAxis(ang, axis)
     local up = ang:Up()
     local upPerp = up - axis * up:Dot(axis)
@@ -614,10 +544,8 @@ local function levelRollAboutAxis(ang, axis)
     return leveled
 end
 
--- Magic uses the reference rig only to recover the weapon's authored
--- orientation. The visible clone is then detached and centered on one common
--- skull-relative target, so hold-type hand positions cannot move different
--- weapons to radically different places.
+-- Magic uses the rig only to recover the authored orientation, then centres the
+-- clone on one skull-relative target so hold types cannot scatter weapons
 local function configureMagicReference(state, referenceAng, targetCenter, scale)
     if not IsValid(state.weapon) then return false end
 
@@ -626,9 +554,8 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
     local reference = state.reference
     local holdType = referenceHoldType(state)
 
-    -- Resolve one canonical model frame per hold type. Muzzle-bearing weapons
-    -- are normalized by the attachment's semantic forward direction; models
-    -- without one retain their reference-biped orientation.
+    -- One canonical frame per hold type. Muzzled weapons normalize on the
+    -- attachment's forward; the rest keep their reference-biped orientation
     state.magicOrientations = state.magicOrientations or {}
     local orientation = state.magicOrientations[holdType]
 
@@ -687,10 +614,8 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
     local desiredFrame
 
     if orientation.kind == "muzzle" then
-        -- The attachment's +X/Forward axis is the barrel direction. Mapping it
-        -- onto this level world frame makes differently authored models agree.
-        -- Only the direction is trustworthy, so the roll is re-derived rather
-        -- than inherited from the attachment.
+        -- The attachment's +X is the barrel. Only that direction is
+        -- trustworthy, so we re-derive the roll rather than inherit it
         local aimAng = Angle(0, referenceAng.y, 0)
         desiredFrame = matrixAt(vector_origin, aimAng)
             * orientation.inverseLocalMuzzle
@@ -703,9 +628,8 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
             * matrixAt(vector_origin, orientation.localAng)
     end
 
-    -- For a model whose derived frame is right about everything but its
-    -- facing. Applied about world up and after the roll levelling, so it
-    -- turns the weapon without disturbing how level it sits.
+    -- For a model whose derived frame is right about everything but its facing.
+    -- About world up and after the levelling, so it turns without tilting
     if state.profile and state.profile.magicYaw then
         desiredFrame = matrixAt(vector_origin, Angle(0, state.profile.magicYaw, 0))
             * desiredFrame
@@ -749,8 +673,6 @@ local function targetTransform(ply, state)
     local pos, ang, displayScale = exactTransform(state, skullPos, skullAng, size)
 
     if not pos then
-        -- Only the profile-less fallback reads these, so they are only read
-        -- when a weapon actually lands on it.
         local mouthOffset = Vector(
             MOUTH_X:GetFloat(),
             MOUTH_Y:GetFloat(),
@@ -761,29 +683,9 @@ local function targetTransform(ply, state)
     end
 
     if state.mode == "magic" then
-        --[[
-        Offset one normalized weapon center from the skull. Mouth profiles
-        and hold-type hand positions do not contribute to this position.
-
-        Both the position and the orientation take their yaw from EyeAngles.
-        They used to disagree -- the orientation came from GetAngles while
-        only the offset used EyeAngles -- and that is a real difference, not
-        two spellings of one thing. EyeAngles is networked for every player
-        precisely so other clients can read an aim direction. A player's
-        entity angles are not: the rendered facing of somepony else is
-        reconstructed by the animation system from pose parameters, so
-        GetAngles is only dependable for the local player.
-
-        Which produced exactly the reported shape. The weapon orbited the
-        holder's head correctly, because that half read EyeAngles, while
-        pointing one fixed world direction, because the half that aimed it
-        did not. Right on the holder's own screen, where the two agree.
-
-        Levelled here rather than inside the consumers, because the yaw is
-        all either one wants: configureMagicReference reads referenceAng.y,
-        and the non-reference fallback would otherwise hand the model a
-        pitch and roll that nothing intends it to have.
-        ]]
+        -- Both the offset and the orientation take their yaw from EyeAngles,
+        -- which is networked for every player. Entity angles are rebuilt from
+        -- pose parameters and are only dependable for the local player
         local levelAng = Angle(0, ply:EyeAngles().y, 0)
 
         ang = Angle(levelAng)
@@ -826,12 +728,9 @@ local function shouldDraw(ply)
 end
 
 local function updateAndDraw(ply, state)
-    -- PostPlayerDraw runs once per render pass, not once per frame: water
-    -- reflections, RT monitors and the 3D skybox each re-draw the player. The
-    -- transform below advances the magic damping by a FrameTime() step, so a
-    -- second pass would step the smoothing again and leave its copy of the
-    -- weapon trailing the first. Later passes redraw what the first one
-    -- already positioned, which still puts the weapon in the reflection.
+    -- PostPlayerDraw runs once per render pass, not once per frame -- reflections
+    -- and the skybox each redraw the player. Stepping the damping twice would
+    -- leave the second copy trailing, so later passes redraw the first placement
     local frame = FrameNumber()
     if state.lastFrame == frame then
         if IsValid(state.model) then state.model:DrawModel() end
@@ -910,31 +809,15 @@ hook.Add("Think", "PonyHolding.Update", function()
         end
     end
 
-    -- A bail reason outlives the state it explains, and a player who is not a
-    -- pony never has a state to destroy in the first place, so this table
-    -- cannot be swept by the loop above. Left to itself it keeps a reference
-    -- to everypony ever bailed on for the rest of the map.
+    -- Swept separately: a bail reason outlives the state it explains, and a
+    -- non-pony never had a state for the loop above to destroy
     for ply in pairs(Holding.LastBail) do
         if not present[ply] then Holding.LastBail[ply] = nil end
     end
 end)
 
---[[
-One last re-force immediately before anything is drawn.
-
-hideRealWeapon runs from Think, early in the frame. PPM/2's timer clearing
-NoDraw after that is the cause we know about, and clearing its flag stops it,
-but the shape of the bug -- one rendered frame between somepony clearing
-NoDraw and our next Think -- is available to anything that touches a weapon we
-have hidden. This closes the window itself instead of one route into it.
-
-PreDrawOpaqueRenderables rather than PrePlayerDraw: a weapon is its own
-entity, bonemerged rather than drawn by the player, so player draw order
-guarantees nothing about when it renders.
-
-Cheap: one entry per armed pony in view, and SetNoDraw on an already-hidden
-entity does nothing.
-]]
+-- One last re-force before anything draws. Anything that clears NoDraw between
+-- our Think and this frame would otherwise get one visible frame
 hook.Add("PreDrawOpaqueRenderables", "PonyHolding.HoldNoDraw", function()
     for weapon, record in pairs(hiddenWeapons) do
         if not IsValid(weapon) then

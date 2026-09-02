@@ -1,5 +1,3 @@
--- PonyHolding shared definitions and public profile API.
-
 PonyHolding = PonyHolding or {}
 local Holding = PonyHolding
 
@@ -43,8 +41,8 @@ function Holding.GetMouthProfile(weapon, modelName)
     end
 end
 
--- These are the confirmed transforms from the supplied PAC outfit for the
--- PPM/2 new model. The normal and no-jiggle variants share this skeleton.
+-- Confirmed transforms from the PAC outfit for the PPM2 new model. The normal
+-- and no-jiggle variants share this skeleton
 local BUILTIN_PROFILES = {
     weapon_pistol = {
         pos = Vector(9.244995, 2.356445, 3.647705),
@@ -70,10 +68,8 @@ local BUILTIN_PROFILES = {
     weapon_crossbow = {
         pos = Vector(3.783691, -0.315430, 0.050049),
         ang = Angle(-0.945081, -0.147470, -3.004356),
-        -- The magic hold aims this one a quarter turn to the pony's right.
-        -- The frame derived from the model lies across the bow rather than
-        -- along the bolt; the position and the roll come out right, so this
-        -- turns the weapon rather than replacing the whole orientation.
+        -- The frame derived from this model lies across the bow rather than
+        -- along the bolt, so the magic hold aims it a quarter turn right
         magicYaw = 90,
         scale = 0.7
     },
