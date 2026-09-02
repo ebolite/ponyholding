@@ -81,6 +81,9 @@ end
 local hiddenWeapons = {}
 Holding.HiddenWeapons = hiddenWeapons
 
+-- The biped pose supplies the grip location. This conversion turns the human
+-- hand into a sideways mouth grip. It is intentionally small and hold-type
+-- based; exact weapon profiles always win.
 local HOLD_ACTIVITIES = {
     normal = ACT_HL2MP_IDLE,
     passive = ACT_HL2MP_IDLE_PASSIVE,
@@ -102,9 +105,6 @@ local HOLD_ACTIVITIES = {
     slam = ACT_HL2MP_IDLE_SLAM
 }
 
--- The biped pose supplies the grip location. This conversion turns the human
--- hand into a sideways mouth grip. It is intentionally small and hold-type
--- based; exact weapon profiles always win.
 local function removeEntity(ent)
     if IsValid(ent) then ent:Remove() end
 end
@@ -191,6 +191,8 @@ local function cleanupAll()
     for weapon in pairs(hiddenWeapons) do
         releaseHiddenWeapon(weapon)
     end
+
+    if istable(Holding.LastBail) then table.Empty(Holding.LastBail) end
 end
 
 -- Remove models left by a prior Lua refresh before replacing the table.
@@ -256,6 +258,15 @@ local function storedWeaponFor(weapon)
     return weapons.GetStored(weapon:GetClass())
 end
 
+-- The first argument that is a non-empty model path. A weapon answers this
+-- question in several places and any of them can be absent, nil, or blank.
+local function firstModelName(...)
+    for index = 1, select("#", ...) do
+        local candidate = select(index, ...)
+        if isstring(candidate) and candidate ~= "" then return candidate end
+    end
+end
+
 local function worldModelFor(weapon)
     if not IsValid(weapon) then return nil end
 
@@ -268,26 +279,15 @@ local function worldModelFor(weapon)
     if showWorldModel == nil and stored then showWorldModel = stored.ShowWorldModel end
     if showWorldModel == false then return nil end
 
-    local modelName
+    -- In preference order: the SWEP's own answer, the entity's own model, the
+    -- class's declared world model, then the stored class table's.
+    local modelName = firstModelName(
+        isfunction(weapon.GetWeaponWorldModel) and weapon:GetWeaponWorldModel() or nil,
+        weapon:GetModel(),
+        weapon.WorldModel,
+        stored and stored.WorldModel)
 
-    if isfunction(weapon.GetWeaponWorldModel) then
-        modelName = weapon:GetWeaponWorldModel()
-    end
-
-    if not isstring(modelName) or modelName == "" then
-        modelName = weapon:GetModel()
-    end
-    if not isstring(modelName) or modelName == "" then
-        modelName = weapon.WorldModel
-    end
-
-    if not isstring(modelName) or modelName == "" then
-        modelName = stored and stored.WorldModel
-    end
-
-    if not isstring(modelName) or modelName == "" or not util.IsValidModel(modelName) then
-        return nil
-    end
+    if not modelName or not util.IsValidModel(modelName) then return nil end
 
     return modelName
 end
@@ -339,6 +339,14 @@ local function createReference()
     reference:DrawShadow(false)
     reference:SetIK(false)
     return reference
+end
+
+local function ensureReference(state)
+    if not IsValid(state.reference) then
+        state.reference = createReference()
+    end
+
+    return IsValid(state.reference)
 end
 
 local function refreshState(ply, weapon, modelName)
@@ -523,13 +531,29 @@ local function muzzleAttachment(model, weapon)
     end
 end
 
+-- Bonemerging the display model onto the reference rig is how it inherits the
+-- rig's pose. The three effects are one decision, so they are set and cleared
+-- as one rather than a line at a time at four call sites.
+local function bonemergeTo(model, parent)
+    if model:GetParent() == parent then return end
+
+    model:SetParent(parent)
+    model:AddEffects(EF_BONEMERGE)
+    model:AddEffects(EF_BONEMERGE_FASTCULL)
+    model:AddEffects(EF_PARENT_ANIMATES)
+end
+
+local function releaseBonemerge(model)
+    model:SetParent(NULL)
+    model:RemoveEffects(EF_BONEMERGE)
+    model:RemoveEffects(EF_BONEMERGE_FASTCULL)
+    model:RemoveEffects(EF_PARENT_ANIMATES)
+end
+
 local function configureReference(state, targetPos, targetAng, scale, mouthGrip)
     if not IsValid(state.weapon) then return false end
 
-    if not IsValid(state.reference) then
-        state.reference = createReference()
-        if not IsValid(state.reference) then return false end
-    end
+    if not ensureReference(state) then return false end
 
     local reference = state.reference
     local holdType = referenceHoldType(state)
@@ -559,12 +583,7 @@ local function configureReference(state, targetPos, targetAng, scale, mouthGrip)
     reference:SetAngles(rootMatrix:GetAngles())
     reference:SetupBones()
 
-    if state.model:GetParent() ~= reference then
-        state.model:SetParent(reference)
-        state.model:AddEffects(EF_BONEMERGE)
-        state.model:AddEffects(EF_BONEMERGE_FASTCULL)
-        state.model:AddEffects(EF_PARENT_ANIMATES)
-    end
+    bonemergeTo(state.model, reference)
 
     state.model:SetModelScale(scale, 0)
     state.model:SetupBones()
@@ -602,10 +621,7 @@ end
 local function configureMagicReference(state, referenceAng, targetCenter, scale)
     if not IsValid(state.weapon) then return false end
 
-    if not IsValid(state.reference) then
-        state.reference = createReference()
-        if not IsValid(state.reference) then return false end
-    end
+    if not ensureReference(state) then return false end
 
     local reference = state.reference
     local holdType = referenceHoldType(state)
@@ -632,12 +648,7 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
         setReferenceActivity(reference, holdType)
         reference:SetupBones()
 
-        if state.model:GetParent() ~= reference then
-            state.model:SetParent(reference)
-            state.model:AddEffects(EF_BONEMERGE)
-            state.model:AddEffects(EF_BONEMERGE_FASTCULL)
-            state.model:AddEffects(EF_PARENT_ANIMATES)
-        end
+        bonemergeTo(state.model, reference)
 
         state.model:SetModelScale(1, 0)
         state.model:SetupBones()
@@ -697,10 +708,7 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
     local centerOffset = Vector(localCenter) * scale
     centerOffset:Rotate(modelAng)
 
-    state.model:SetParent(NULL)
-    state.model:RemoveEffects(EF_BONEMERGE)
-    state.model:RemoveEffects(EF_BONEMERGE_FASTCULL)
-    state.model:RemoveEffects(EF_PARENT_ANIMATES)
+    releaseBonemerge(state.model)
     state.model:SetPos(targetCenter - centerOffset)
     state.model:SetAngles(modelAng)
     state.model:SetModelScale(scale, 0)
@@ -711,14 +719,11 @@ end
 
 local function clearReferenceParent(state)
     if state.model:GetParent() == state.reference then
-        state.model:SetParent(NULL)
-        state.model:RemoveEffects(EF_BONEMERGE)
-        state.model:RemoveEffects(EF_BONEMERGE_FASTCULL)
-        state.model:RemoveEffects(EF_PARENT_ANIMATES)
+        releaseBonemerge(state.model)
     end
 end
 
-local function exactTransform(ply, state, skullPos, skullAng, size)
+local function exactTransform(state, skullPos, skullAng, size)
     local profile = state.profile
     if not profile then return nil end
 
@@ -733,13 +738,16 @@ local function targetTransform(ply, state)
     if not skullPos then return nil end
 
     local size = ponySize(ply)
-    local pos, ang, displayScale = exactTransform(ply, state, skullPos, skullAng, size)
-    local mouthOffset = Vector(
-        MOUTH_X:GetFloat(),
-        MOUTH_Y:GetFloat(),
-        MOUTH_Z:GetFloat())
+    local pos, ang, displayScale = exactTransform(state, skullPos, skullAng, size)
 
     if not pos then
+        -- Only the profile-less fallback reads these, so they are only read
+        -- when a weapon actually lands on it.
+        local mouthOffset = Vector(
+            MOUTH_X:GetFloat(),
+            MOUTH_Y:GetFloat(),
+            MOUTH_Z:GetFloat())
+
         pos = LocalToWorld(mouthOffset * size, angle_zero, skullPos, skullAng)
         ang, displayScale = skullAng, size
     end
@@ -893,6 +901,14 @@ hook.Add("Think", "PonyHolding.Update", function()
             destroyState(ply)
         end
     end
+
+    -- A bail reason outlives the state it explains, and a player who is not a
+    -- pony never has a state to destroy in the first place, so this table
+    -- cannot be swept by the loop above. Left to itself it keeps a reference
+    -- to everypony ever bailed on for the rest of the map.
+    for ply in pairs(Holding.LastBail) do
+        if not present[ply] then Holding.LastBail[ply] = nil end
+    end
 end)
 
 --[[
@@ -951,10 +967,12 @@ hook.Add("PostDrawTranslucentRenderables", "PonyHolding.DrawMagicAuras", functio
     for ply, state in pairs(states) do
         if state.auraVisible and IsValid(ply) and state.auraPos then
             local color = magicColor(ply)
+            local radius = state.auraRadius or 12
+
             DrawAura(
                 state.auraPos,
                 0,
-                state.auraRadius or 12,
+                radius,
                 100,
                 color.r,
                 color.g,
@@ -965,7 +983,7 @@ hook.Add("PostDrawTranslucentRenderables", "PonyHolding.DrawMagicAuras", functio
             if particlesPerSecond > 0 and isfunction(DrawParticles) then
                 state.auraPhase = DrawParticles(
                     state.auraPos,
-                    state.auraRadius or 12,
+                    radius,
                     state.auraPhase or 0,
                     1 / particlesPerSecond,
                     deltaTime)
