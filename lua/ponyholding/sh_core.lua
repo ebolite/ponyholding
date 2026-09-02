@@ -13,6 +13,7 @@ local function copyProfile(profile)
         pos = Vector(profile.pos or vector_origin),
         ang = Angle(profile.ang or angle_zero),
         magicAng = profile.magicAng and Angle(profile.magicAng) or nil,
+        magicYaw = tonumber(profile.magicYaw) or nil,
         scale = tonumber(profile.scale) or 1
     }
 end
@@ -69,6 +70,11 @@ local BUILTIN_PROFILES = {
     weapon_crossbow = {
         pos = Vector(3.783691, -0.315430, 0.050049),
         ang = Angle(-0.945081, -0.147470, -3.004356),
+        -- The magic hold aims this one a quarter turn to the pony's right.
+        -- The frame derived from the model lies across the bow rather than
+        -- along the bolt; the position and the roll come out right, so this
+        -- turns the weapon rather than replacing the whole orientation.
+        magicYaw = 90,
         scale = 0.7
     },
     weapon_smg1 = {

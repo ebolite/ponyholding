@@ -703,6 +703,14 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
             * matrixAt(vector_origin, orientation.localAng)
     end
 
+    -- For a model whose derived frame is right about everything but its
+    -- facing. Applied about world up and after the roll levelling, so it
+    -- turns the weapon without disturbing how level it sits.
+    if state.profile and state.profile.magicYaw then
+        desiredFrame = matrixAt(vector_origin, Angle(0, state.profile.magicYaw, 0))
+            * desiredFrame
+    end
+
     local modelAng = desiredFrame:GetAngles()
     local localCenter, halfExtents = scaledRenderBounds(state.model)
     local centerOffset = Vector(localCenter) * scale

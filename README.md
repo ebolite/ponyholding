@@ -45,9 +45,17 @@ PonyHolding.RegisterMouthProfile("weapon_example", {
     ang = Angle(0, 0, 90),
     -- Optional absolute model orientation relative to magic forward.
     magicAng = Angle(0, 0, 0),
+    -- Optional yaw correction for the magic hold, in degrees about world up.
+    -- For a model whose derived frame aims the weapon sideways but is
+    -- otherwise correct; `magicAng` replaces the orientation, this turns it.
+    magicYaw = 0,
     scale = 1
 })
 ```
+
+`weapon_crossbow` carries `magicYaw = 90`: the frame derived from its model
+lies across the bow rather than along the bolt, so the magic hold would
+otherwise aim it a quarter turn to the pony's right.
 
 Shared world-model profiles are also supported:
 
