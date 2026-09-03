@@ -228,6 +228,19 @@ local function worldModelFor(weapon)
     if showWorldModel == nil and stored then showWorldModel = stored.ShowWorldModel end
     if showWorldModel == false then return nil end
 
+    -- A SWEP with its own DrawWorldModel paints whatever it likes and the
+    -- WorldModel field stops describing what is on screen. Wowozela declares a
+    -- bugbait and then draws nothing, so copying the field draws a bugbait
+    -- nopony can see on the real weapon. Only when the SWEP defines it itself:
+    -- weapon packs put one on their shared base and still mean the model.
+    if stored and stored.DrawWorldModel then
+        local base = stored.Base and weapons.GetStored(stored.Base)
+
+        if not base or stored.DrawWorldModel ~= base.DrawWorldModel then
+            return nil
+        end
+    end
+
     local modelName = firstModelName(
         isfunction(weapon.GetWeaponWorldModel) and weapon:GetWeaponWorldModel() or nil,
         weapon:GetModel(),
@@ -238,6 +251,8 @@ local function worldModelFor(weapon)
 
     return modelName
 end
+
+Holding.WorldModelFor = worldModelFor
 
 local function copyAppearance(source, target)
     if not IsValid(source) or not IsValid(target) then return end
@@ -624,6 +639,14 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
     local modelAng = desiredFrame:GetAngles()
     local localCenter, halfExtents = scaledRenderBounds(state.model)
     local centerOffset = Vector(localCenter) * scale
+
+    -- Centring uses the render bounds, which sit off to one side on a model
+    -- whose geometry is not centred on its origin. magicOffset nudges those
+    -- back, in the weapon's own axes so it reads the same whichever way it aims.
+    if state.profile and state.profile.magicOffset then
+        centerOffset = centerOffset - state.profile.magicOffset * scale
+    end
+
     centerOffset:Rotate(modelAng)
 
     releaseBonemerge(state.model)

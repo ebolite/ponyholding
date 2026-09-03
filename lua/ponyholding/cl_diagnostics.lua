@@ -123,3 +123,47 @@ concommand.Add("ponyholding_watch_stop", function()
     -- at us, so the rate is printed rather than just the count.
     Msg("    a rate near 1.00/sec is PPM/2's ModelChecks; faster is the bail.\n")
 end)
+
+-- What a weapon says about its world model, for the ones we draw something for
+-- and should not. There is no single flag meaning "hidden": some declare an
+-- empty WorldModel, some set ShowWorldModel false, some override DrawWorldModel
+-- and paint their own, and a class with no Lua behind it answers with whatever
+-- the engine left on the entity.
+concommand.Add("ponyholding_weapon_dump", function()
+    local ply = LocalPlayer()
+    local weapon = IsValid(ply) and ply:GetActiveWeapon()
+
+    if not IsValid(weapon) then
+        Msg("[ponyholding] no active weapon\n")
+        return
+    end
+
+    local class = weapon:GetClass()
+    local stored = weapons.GetStored and weapons.GetStored(class)
+    local base = stored and stored.Base and weapons.GetStored(stored.Base)
+
+    local function show(value)
+        if value == nil then return "<nil>" end
+        if value == "" then return "<empty string>" end
+        return tostring(value)
+    end
+
+    local drawWorld = "<nil>"
+
+    if stored and stored.DrawWorldModel then
+        drawWorld = (base and stored.DrawWorldModel == base.DrawWorldModel)
+            and "inherited" or "overridden by this swep"
+    end
+
+    Msg(string.format("[ponyholding] %s\n", class))
+    Msg(string.format("    lua swep            %s\n", stored and "yes" or "no"))
+    Msg(string.format("    ShowWorldModel      inst %s  stored %s\n",
+        show(weapon.ShowWorldModel), show(stored and stored.ShowWorldModel)))
+    Msg(string.format("    WorldModel          inst %s  stored %s\n",
+        show(weapon.WorldModel), show(stored and stored.WorldModel)))
+    Msg(string.format("    GetWeaponWorldModel %s\n",
+        show(isfunction(weapon.GetWeaponWorldModel) and weapon:GetWeaponWorldModel() or nil)))
+    Msg(string.format("    GetModel            %s\n", show(weapon:GetModel())))
+    Msg(string.format("    DrawWorldModel      %s\n", drawWorld))
+    Msg(string.format("    we would draw       %s\n", show(Holding.WorldModelFor(weapon))))
+end, nil, "Dump what the active weapon reports about its world model")

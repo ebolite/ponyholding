@@ -12,6 +12,7 @@ local function copyProfile(profile)
         ang = Angle(profile.ang or angle_zero),
         magicAng = profile.magicAng and Angle(profile.magicAng) or nil,
         magicYaw = tonumber(profile.magicYaw) or nil,
+        magicOffset = profile.magicOffset and Vector(profile.magicOffset) or nil,
         scale = tonumber(profile.scale) or 1
     }
 end
