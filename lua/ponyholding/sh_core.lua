@@ -50,7 +50,10 @@ local BUILTIN_PROFILES = {
     },
     gmod_tool = {
         pos = Vector(5.966309, 1.525513, 1.932251),
-        ang = Angle(-0.870094, -4.309549, 6.130774)
+        ang = Angle(-0.870094, -4.309549, 6.130774),
+        -- Its geometry sits right of its origin, so the render bounds we centre
+        -- on put the aura beside the tool rather than around it
+        magicOffset = Vector(0, 3.5, 0)
     },
     weapon_shotgun = {
         pos = Vector(20.827698, 0.203857, 3.460938),
