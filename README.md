@@ -27,11 +27,16 @@ PonyHolding.RegisterMouthProfile("weapon_example", {
     ang = Angle(0, 0, 90), -- Orientation of the model relative to forward
     magicAng = Angle(0, 0, 0), -- Orientation of the magic model relative to forward
     magicYaw = 0, -- Optional yaw correction for a sideways model
+    magicOffset = Vector(0, 0, 0), -- Optional nudge for a model whose geometry is off-origin
     scale = 1
 })
 ```
 
 E.g. `weapon_crossbow` is `magicYaw = 90` (yawed left) because the automatic detection assumes it's pointed sideways.
+
+The magic hold centres a weapon on its render bounds, so a model whose geometry sits off
+to one side of its own origin hangs away from the aura. `magicOffset` moves it back, in
+the weapon's own axes.
 
 Shared world-model profiles are also supported:
 
