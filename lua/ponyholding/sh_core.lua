@@ -41,8 +41,7 @@ function Holding.GetMouthProfile(weapon, modelName)
     end
 end
 
--- Confirmed transforms from the PAC outfit for the PPM2 new model. The normal
--- and no-jiggle variants share this skeleton
+-- Stolen directly from a PAC, sorry I didn't give credit! I forgot where I got it :P
 local BUILTIN_PROFILES = {
     weapon_pistol = {
         pos = Vector(9.244995, 2.356445, 3.647705),
@@ -68,8 +67,7 @@ local BUILTIN_PROFILES = {
     weapon_crossbow = {
         pos = Vector(3.783691, -0.315430, 0.050049),
         ang = Angle(-0.945081, -0.147470, -3.004356),
-        -- The frame derived from this model lies across the bow rather than
-        -- along the bolt, so the magic hold aims it a quarter turn right
+        -- Add 90 yaw because the crossbow ends up sideways
         magicYaw = 90,
         scale = 0.7
     },

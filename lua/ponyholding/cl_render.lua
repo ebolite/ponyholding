@@ -22,19 +22,14 @@ local MAGIC_RESPONSE = 9
 local TELEPORT_DISTANCE_SQR = 200 * 200
 local AURA_MARGIN = 1.2
 
--- Settled placement values, so we name them here rather than leave them on the
--- console. Both pitch corrections landed on zero and are kept to mark the spot
+-- Where to place and pitch weapon models
 local MAGIC_FORWARD = 10
 local MAGIC_RIGHT = 20
 local MAGIC_UP = -10
 local MAGIC_PITCH = 0
 local MOUTH_PITCH = 0
 
--- Convars, not constants: these only apply to weapons with no profile, so there
--- is no measured answer to freeze and dialling them in wants the game running.
--- Axes are LrigScull's own: Y is vertical and positive is DOWN, X is forward
--- along the muzzle, Z is lateral. Source units at pony size 1.0, multiplied
--- by ponySize() at use
+-- Convars because they'e useful for debugging
 local MOUTH_X = CreateClientConVar(
     "ponyholding_mouth_x", "4", true, false,
     "Fallback mouth-hold offset along LrigScull's local X axis (forward)", -100, 100)
@@ -49,7 +44,7 @@ local MOUTH_Z = CreateClientConVar(
 
 local states = {}
 
--- Restore anything hidden by an older copy of this file before a Lua refresh.
+-- Restore anything hidden by an older copy of this file before a Lua refresh
 if istable(Holding.HiddenWeapons) then
     for weapon, record in pairs(Holding.HiddenWeapons) do
         if IsValid(weapon) and record.forced then
@@ -61,8 +56,7 @@ end
 local hiddenWeapons = {}
 Holding.HiddenWeapons = hiddenWeapons
 
--- Turns the human hand pose into a sideways mouth grip. Kept small and
--- hold-type based, since an exact weapon profile always wins
+-- Turns the human hand pose into a sideways mouth grip
 local HOLD_ACTIVITIES = {
     normal = ACT_HL2MP_IDLE,
     passive = ACT_HL2MP_IDLE_PASSIVE,
@@ -99,9 +93,8 @@ local function releaseHiddenWeapon(weapon)
     weapon:SetNoDraw(record.original)
 end
 
--- PPM2's ModelChecks timer un-hides every weapon carrying __ppm2_weapon_hit
--- once a second, unconditionally. It sets that flag on the weapon and clears it
--- on the player, so it never gets cleared -- we clear it ourselves
+-- PPM2's ModelChecks un-hides every weapon carrying __ppm2_weapon_hit
+-- once every second. We need to clear it ourselves.
 local function releaseFromPPM2(weapon)
     weapon.__ppm2_weapon_hit = nil
 end
@@ -323,13 +316,9 @@ local function refreshState(ply, weapon, modelName)
     return state
 end
 
--- Why ensureState last gave up, for cl_diagnostics. Cleared on success, so a
--- reason sitting here is live this frame
+-- Why ensureState last gave up, for cl_diagnostics
 Holding.LastBail = Holding.LastBail or {}
 
--- We suspend rather than tear down. destroyState puts the real weapon back at
--- its bonemerged chest position for a frame, and most bail reasons are networked
--- state that reads invalid for a tick on a remote pony who is drawing fine
 local BAIL_GRACE = 0.25
 
 local function bail(ply, reason)
@@ -522,9 +511,9 @@ local function configureReference(state, targetPos, targetAng, scale, mouthGrip)
     return true
 end
 
--- A muzzle attachment only encodes the barrel direction reliably. Its roll is
--- whatever bone the modeller hung it off, routinely a quarter turn out, so we
--- spin the frame about the aim axis until the model's up is nearest world up
+-- We can read the direction of the barrel from where the muzzle is pointing, but
+-- not the roll, which can be whatever. This approximates it by spinning the
+-- weapon until its UP is world UP.
 local function levelRollAboutAxis(ang, axis)
     local up = ang:Up()
     local upPerp = up - axis * up:Dot(axis)
@@ -544,8 +533,8 @@ local function levelRollAboutAxis(ang, axis)
     return leveled
 end
 
--- Magic uses the rig only to recover the authored orientation, then centres the
--- clone on one skull-relative target so hold types cannot scatter weapons
+-- We use the rig to figure out how the weapon is going to orient, but we need to position it
+-- relative to where the skull is.
 local function configureMagicReference(state, referenceAng, targetCenter, scale)
     if not IsValid(state.weapon) then return false end
 
@@ -554,8 +543,8 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
     local reference = state.reference
     local holdType = referenceHoldType(state)
 
-    -- One canonical frame per hold type. Muzzled weapons normalize on the
-    -- attachment's forward; the rest keep their reference-biped orientation
+    -- Weapons with muzzles get pointed towards where they need to point,
+    -- everything else we just reference how the model was holding them.
     state.magicOrientations = state.magicOrientations or {}
     local orientation = state.magicOrientations[holdType]
 
@@ -614,8 +603,7 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
     local desiredFrame
 
     if orientation.kind == "muzzle" then
-        -- The attachment's +X is the barrel. Only that direction is
-        -- trustworthy, so we re-derive the roll rather than inherit it
+        -- The attachment's +X is where the barrel points
         local aimAng = Angle(0, referenceAng.y, 0)
         desiredFrame = matrixAt(vector_origin, aimAng)
             * orientation.inverseLocalMuzzle
@@ -628,8 +616,6 @@ local function configureMagicReference(state, referenceAng, targetCenter, scale)
             * matrixAt(vector_origin, orientation.localAng)
     end
 
-    -- For a model whose derived frame is right about everything but its facing.
-    -- About world up and after the levelling, so it turns without tilting
     if state.profile and state.profile.magicYaw then
         desiredFrame = matrixAt(vector_origin, Angle(0, state.profile.magicYaw, 0))
             * desiredFrame
@@ -683,9 +669,7 @@ local function targetTransform(ply, state)
     end
 
     if state.mode == "magic" then
-        -- Both the offset and the orientation take their yaw from EyeAngles,
-        -- which is networked for every player. Entity angles are rebuilt from
-        -- pose parameters and are only dependable for the local player
+        -- We get both offset and orientation from EyeAngles, and it's already networked.
         local levelAng = Angle(0, ply:EyeAngles().y, 0)
 
         ang = Angle(levelAng)
@@ -728,9 +712,9 @@ local function shouldDraw(ply)
 end
 
 local function updateAndDraw(ply, state)
-    -- PostPlayerDraw runs once per render pass, not once per frame -- reflections
-    -- and the skybox each redraw the player. Stepping the damping twice would
-    -- leave the second copy trailing, so later passes redraw the first placement
+    -- Since PostPlayerDraw runs once per render pass, not once per frame, we need
+    -- to ensure that drawing the weapon only happens on the first render pass of each frame.
+    -- Otherwise reflections & the skybox stamp another model and damp it forward, creating a trail.
     local frame = FrameNumber()
     if state.lastFrame == frame then
         if IsValid(state.model) then state.model:DrawModel() end
@@ -809,15 +793,15 @@ hook.Add("Think", "PonyHolding.Update", function()
         end
     end
 
-    -- Swept separately: a bail reason outlives the state it explains, and a
-    -- non-pony never had a state for the loop above to destroy
+    -- Keep the diagnostic
     for ply in pairs(Holding.LastBail) do
         if not present[ply] then Holding.LastBail[ply] = nil end
     end
 end)
 
--- One last re-force before anything draws. Anything that clears NoDraw between
--- our Think and this frame would otherwise get one visible frame
+-- One last re-force before anything draws.
+-- If something cleared NoDraw between our think and this frame, the original weapon might
+-- briefly become visible.
 hook.Add("PreDrawOpaqueRenderables", "PonyHolding.HoldNoDraw", function()
     for weapon, record in pairs(hiddenWeapons) do
         if not IsValid(weapon) then
